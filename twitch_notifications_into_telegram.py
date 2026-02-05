@@ -15,6 +15,7 @@ end_message = ""
 enable_start = True
 enable_end = True
 delete_start_message = False
+disable_web_page_preview = True
 
 sent_message_ids = {
     "start_message": None
@@ -32,7 +33,7 @@ class TelegramBot:
             return False
 
         url = URL_SEND_MSG.format(token=self.bot_token)
-        data = urllib.parse.urlencode({'chat_id': self.chat_id, 'text': msg_text, 'parse_mode': 'HTML'}).encode('utf-8')
+        data = urllib.parse.urlencode({'disable_web_page_preview': disable_web_page_preview, 'chat_id': self.chat_id, 'text': msg_text, 'parse_mode': 'HTML'}).encode('utf-8')
 
         try:
             with urllib.request.urlopen(url=urllib.request.Request(url, data=data), timeout=10) as response:
@@ -162,6 +163,17 @@ def script_properties():
         delete_check,
         "Удалить это сообщение после окончания стрима"
     )
+
+    disable_web_page_prev = obs.obs_properties_add_bool(
+        group_start_msg,
+        name="disable_web_page_preview",
+        description="Ссылки без превью"
+    )
+    obs.obs_property_set_long_description(
+        disable_web_page_prev,
+        "Если к сообщению прикреплена ссылка, то со включенной галочкой отправится превью ссылки (картинка)"
+    )
+
 
     obs.obs_properties_add_group(
         props,
@@ -369,10 +381,12 @@ def script_defaults(settings):
 
     obs.obs_data_set_default_bool(settings, "enable_end", True)
 
+    obs.obs_data_set_default_bool(settings, "disable_web_page_preview", True)
+
 
 def script_load(settings):
     """Загрузка скрипта"""
-    global bot_token, chat_id, start_message, end_message, enable_start, enable_end, delete_start_message
+    global bot_token, chat_id, start_message, end_message, enable_start, enable_end, delete_start_message, disable_web_page_preview
 
     bot_token = obs.obs_data_get_string(settings, "bot_token")
     chat_id = obs.obs_data_get_string(settings, "chat_id")
@@ -381,6 +395,7 @@ def script_load(settings):
     enable_start = obs.obs_data_get_bool(settings, "enable_start")
     enable_end = obs.obs_data_get_bool(settings, "enable_end")
     delete_start_message = obs.obs_data_get_bool(settings, "delete_start_message")
+    disable_web_page_preview = obs.obs_data_get_bool(settings, "disable_web_page_preview")
 
     # Сброс сохраненных ID сообщений
     sent_message_ids["start_message"] = None
@@ -391,7 +406,7 @@ def script_load(settings):
 
 def script_update(settings):
     """Обновление настроек в реальном времени. Например, поставил галочку в чекбокс - изменения тут же применились."""
-    global bot_token, chat_id, start_message, end_message, enable_start, delete_start_message, enable_end
+    global bot_token, chat_id, start_message, end_message, enable_start, delete_start_message, enable_end, disable_web_page_preview
 
     bot_token = bot.bot_token = obs.obs_data_get_string(settings, "bot_token")
     chat_id = bot.chat_id = obs.obs_data_get_string(settings, "chat_id")
@@ -403,6 +418,8 @@ def script_update(settings):
     delete_start_message = obs.obs_data_get_bool(settings, "delete_start_message")
 
     enable_end = obs.obs_data_get_bool(settings, "enable_end")
+
+    disable_web_page_preview = obs.obs_data_get_bool(settings, "disable_web_page_preview")
 
 
 def script_save(settings):
@@ -417,6 +434,8 @@ def script_save(settings):
     obs.obs_data_set_bool(settings, "delete_start_message", delete_start_message)
 
     obs.obs_data_set_bool(settings, "enable_end", enable_end)
+
+    obs.obs_data_set_bool(settings, "disable_web_page_preview", disable_web_page_preview)
 
 
 def script_unload():
