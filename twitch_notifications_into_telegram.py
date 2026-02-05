@@ -81,7 +81,7 @@ def base_test_stream_callback(default_msg_text, msg_type):
     else:
         if delete_start_message:
             bot.delete_start_msg()
-        return bot.send_msg(msg_text=end_message if end_message else default_msg_text)
+        return bot.send_msg(msg_text=end_message if end_message else default_msg_text) if enable_end else False
 
 
 def test_start_stream_callback(props, prop):
