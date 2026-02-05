@@ -15,5 +15,5 @@
 > 10. Можете закрыть окно.
 
 > ## Список плагинов
-> 1. [Отправка уведомлений в Telegram о начале/конце стрима v1.0](#https://github.com/SilverSheldon/OBS-python-scripts/blob/main/twitch_notifications_into_telegram.py "Перейти")
+> 1. [Отправка уведомлений в Telegram о начале/конце стрима v1.0](#https://github.com/SilverSheldon/OBS-python-scripts/blob/main/twitch_notifications_into_telegram.py)
 > > <details><summary>Описание</summary>Плагин позволяет настроить автоматическую отправку оповещений о начале или конце стрима в ваш Telegram-канал/группу/чат - всюду, куда дотянется ваш бот. Для использования плагина необходимо будет создать своего бота у <a href="https://t.me/BotFather">@BotFather</a> и узнать id канала/чата в Telegram. Более подробную инструкцию можно будет посмотреть после установки скрипта в OBS.</details>
