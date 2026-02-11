@@ -1,12 +1,15 @@
 import json
-import urllib.request
+import mimetypes
+import os
 import urllib.parse
+import urllib.request
 
 import obspython as obs
 
 BASE_URL = "https://api.telegram.org/bot{token}/"
 URL_SEND_MSG = BASE_URL + "sendMessage"
 URL_DELETE_MSG = BASE_URL + "deleteMessage"
+URL_SEND_PHOTO = BASE_URL + "sendPhoto"
 
 bot_token = ""
 chat_id = ""
@@ -16,6 +19,7 @@ enable_start = True
 enable_end = True
 delete_start_message = False
 disable_web_page_preview = True
+attach_photo = ""
 
 sent_message_ids = {
     "start_message": None
@@ -33,8 +37,12 @@ class TelegramBot:
             return False
 
         url = URL_SEND_MSG.format(token=self.bot_token)
-        data = urllib.parse.urlencode({'disable_web_page_preview': disable_web_page_preview, 'chat_id': self.chat_id, 'text': msg_text, 'parse_mode': 'HTML'}).encode('utf-8')
-
+        data = urllib.parse.urlencode({
+            'disable_web_page_preview': disable_web_page_preview,
+            'chat_id': self.chat_id,
+            'text': msg_text,
+            'parse_mode': 'HTML'
+        }).encode('utf-8')
         try:
             with urllib.request.urlopen(url=urllib.request.Request(url, data=data), timeout=10) as response:
                 response = json.loads(response.read().decode())
@@ -62,12 +70,68 @@ class TelegramBot:
             return False
 
     def delete_start_msg(self):
+        """Удаление стартового сообщения"""
         if sent_message_ids.get("start_message"):
             success = self.delete_msg(sent_message_ids["start_message"])
             if success:
                 sent_message_ids["start_message"] = None
             return success
         return False
+
+    def send_photo(self, image_path, caption=""):
+        """Отправка фото в Telegram"""
+        if not os.path.exists(image_path):
+            return f"Файл не найден: {image_path}"
+
+        url = URL_SEND_PHOTO.format(token=self.bot_token)
+
+        try:
+            with open(image_path, 'rb') as pic:
+                pic_data = pic.read()
+
+            mime_type, _ = mimetypes.guess_type(image_path)
+            if not mime_type:
+                mime_type = 'image/jpeg'
+
+            boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW'
+
+            body = [
+                f'--{boundary}',
+                'Content-Disposition: form-data; name="chat_id"',
+                '',
+                str(self.chat_id),
+                f'--{boundary}',
+                f'Content-Disposition: form-data; name="photo"; filename="{os.path.basename(image_path)}"',
+                f'Content-Type: {mime_type}',
+                '',
+            ]
+
+            body = '\r\n'.join(body).encode('utf-8') + b'\r\n' + pic_data + b'\r\n'
+
+            if caption:
+                body += f'--{boundary}\r\n'.encode('utf-8')
+                body += b'Content-Disposition: form-data; name="caption"\r\n\r\n'
+                body += caption.encode('utf-8') + b'\r\n'
+
+                body += f'--{boundary}\r\n'.encode('utf-8')
+                body += b'Content-Disposition: form-data; name="parse_mode"\r\n\r\n'
+                body += b'HTML\r\n'
+
+            body += f'--{boundary}--\r\n'.encode('utf-8')
+            req = urllib.request.Request(
+                url,
+                data=body,
+                headers={'Content-Type': f'multipart/form-data; boundary={boundary}', 'User-Agent': 'OBS-Studio'}
+            )
+
+            with urllib.request.urlopen(req, timeout=10) as response:
+                response = json.loads(response.read().decode())
+                message_id = response.get("result").get("message_id")
+                sent_message_ids["start_message"] = message_id
+                return response.get('ok')
+
+        except Exception as e:
+            return f"Ошибка отправки фото: {str(e)}"
 
 
 bot = TelegramBot(bot_token, chat_id)
@@ -77,8 +141,10 @@ bot = TelegramBot(bot_token, chat_id)
 def base_test_stream_callback(default_msg_text, msg_type):
     if not bot.bot_token or not bot.chat_id:
         return False
-    if msg_type == "start":
+    if msg_type == "start" and not attach_photo:
         return bot.send_msg(msg_text=start_message if start_message else default_msg_text)
+    elif msg_type == "start" and attach_photo:
+        return bot.send_photo(image_path=attach_photo, caption=start_message if start_message else default_msg_text)
     else:
         if delete_start_message:
             bot.delete_start_msg()
@@ -99,8 +165,10 @@ def test_end_stream_callback(props, prop):
 def on_event(event):
     """Обработчик событий OBS"""
     if event == obs.OBS_FRONTEND_EVENT_STREAMING_STARTED:
-        if enable_start and start_message:
+        if enable_start and start_message and not attach_photo:
             bot.send_msg(msg_text=start_message)
+        elif enable_start and start_message and attach_photo:
+            bot.send_photo(image_path=attach_photo, caption=start_message)
 
     elif event == obs.OBS_FRONTEND_EVENT_STREAMING_STOPPED:
         if delete_start_message:
@@ -141,7 +209,20 @@ def script_properties():
     )
     obs.obs_property_set_long_description(
         start_msg,
-        "Это сообщение будет отправлено в Telegram-канал/группу/чат при начале трансляции"
+        "Это сообщение будет отправлено в Telegram-канал/группу/чат при начале трансляции.\nПоддерживается HTML-форматирование."
+    )
+
+    attach_photo_path = obs.obs_properties_add_path(
+        group_start_msg,
+        name="attach_photo",
+        description="Прикрепить фото (путь к файлу)\n(Необязательно)",
+        type=obs.OBS_PATH_FILE,
+        filter='*.jpg *.jpeg *.png *.gif ',
+        default_path=''
+    )
+    obs.obs_property_set_long_description(
+        attach_photo_path,
+        "По желанию вы можете прикрепить путь к фото, которое будет отправлено вместе с сообщением"
     )
 
     start_check = obs.obs_properties_add_bool(
@@ -167,13 +248,12 @@ def script_properties():
     disable_web_page_prev = obs.obs_properties_add_bool(
         group_start_msg,
         name="disable_web_page_preview",
-        description="Ссылки без превью"
+        description="Ссылки без превью (не работает, если прикреплено фото)"
     )
     obs.obs_property_set_long_description(
         disable_web_page_prev,
         "Если к сообщению прикреплена ссылка, то со включенной галочкой отправится превью ссылки (картинка)"
     )
-
 
     obs.obs_properties_add_group(
         props,
@@ -279,7 +359,7 @@ def script_properties():
     obs.obs_properties_add_group(
         props,
         name="bot_test",
-        description="ТЕСТОВЫЙ ПРОГОН БОТА (в Telegram-канал/группу придёт фейковое уведомление о начале/конце стрима)",
+        description="ТЕСТОВЫЙ ПРОГОН БОТА (в Telegram-канал/группу придёт фейковое уведомление)",
         type=obs.OBS_GROUP_NORMAL,
         group=group_bot_test
     )
@@ -373,8 +453,12 @@ def script_defaults(settings):
     obs.obs_data_set_default_string(settings, "chat_id", "")
 
     default_start_msg = '🎥 НУ ЧЕ, НАРОД, ПОГНАЛИ? ВСЕ НА <a href="https://www.twitch.tv/jitterbug_jemboree">СТРИМ!</a>'
+    default_end_msg = "🛑 ВСЕМ СПАСИБО ЗА СТРИМ!"
+
     obs.obs_data_set_default_string(settings, "start_message", default_start_msg)
-    obs.obs_data_set_default_string(settings, "end_message", "🛑 ВСЕМ СПАСИБО ЗА СТРИМ!")
+    obs.obs_data_set_default_string(settings, "end_message", default_end_msg)
+
+    obs.obs_data_set_default_string(settings, "attach_photo", "")
 
     obs.obs_data_set_default_bool(settings, "enable_start", True)
     obs.obs_data_set_default_bool(settings, "delete_start_message", False)
@@ -386,15 +470,22 @@ def script_defaults(settings):
 
 def script_load(settings):
     """Загрузка скрипта"""
-    global bot_token, chat_id, start_message, end_message, enable_start, enable_end, delete_start_message, disable_web_page_preview
+    global bot_token, chat_id, start_message, end_message, enable_start, enable_end, delete_start_message
+    global disable_web_page_preview, attach_photo
 
     bot_token = obs.obs_data_get_string(settings, "bot_token")
     chat_id = obs.obs_data_get_string(settings, "chat_id")
+
     start_message = obs.obs_data_get_string(settings, "start_message")
     end_message = obs.obs_data_get_string(settings, "end_message")
+
     enable_start = obs.obs_data_get_bool(settings, "enable_start")
-    enable_end = obs.obs_data_get_bool(settings, "enable_end")
     delete_start_message = obs.obs_data_get_bool(settings, "delete_start_message")
+
+    enable_end = obs.obs_data_get_bool(settings, "enable_end")
+
+    attach_photo = obs.obs_data_get_bool(settings, "attach_photo")
+
     disable_web_page_preview = obs.obs_data_get_bool(settings, "disable_web_page_preview")
 
     # Сброс сохраненных ID сообщений
@@ -406,13 +497,16 @@ def script_load(settings):
 
 def script_update(settings):
     """Обновление настроек в реальном времени. Например, поставил галочку в чекбокс - изменения тут же применились."""
-    global bot_token, chat_id, start_message, end_message, enable_start, delete_start_message, enable_end, disable_web_page_preview
+    global bot_token, chat_id, start_message, end_message, enable_start, delete_start_message, enable_end
+    global disable_web_page_preview, attach_photo
 
     bot_token = bot.bot_token = obs.obs_data_get_string(settings, "bot_token")
     chat_id = bot.chat_id = obs.obs_data_get_string(settings, "chat_id")
 
     start_message = obs.obs_data_get_string(settings, "start_message")
     end_message = obs.obs_data_get_string(settings, "end_message")
+
+    attach_photo = obs.obs_data_get_string(settings, "attach_photo")
 
     enable_start = obs.obs_data_get_bool(settings, "enable_start")
     delete_start_message = obs.obs_data_get_bool(settings, "delete_start_message")
@@ -429,6 +523,8 @@ def script_save(settings):
 
     obs.obs_data_set_string(settings, "start_message", start_message)
     obs.obs_data_set_string(settings, "end_message", end_message)
+
+    obs.obs_data_set_string(settings, "attach_photo", attach_photo)
 
     obs.obs_data_set_bool(settings, "enable_start", enable_start)
     obs.obs_data_set_bool(settings, "delete_start_message", delete_start_message)
