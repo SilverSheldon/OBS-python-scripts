@@ -11,6 +11,9 @@ URL_SEND_MSG = BASE_URL + "sendMessage"
 URL_DELETE_MSG = BASE_URL + "deleteMessage"
 URL_SEND_PHOTO = BASE_URL + "sendPhoto"
 
+FILTER_ALL_FILES = "Все файлы (*.*)"
+FILTER_PHOTO = '*.jpg *.jpeg *.png *.gif '
+
 bot_token = ""
 chat_id = ""
 start_message = ""
@@ -20,6 +23,7 @@ enable_end = True
 delete_start_message = False
 disable_web_page_preview = True
 attach_photo = ""
+is_group_attach_photo = False
 
 sent_message_ids = {
     "start_message": None
@@ -141,9 +145,9 @@ bot = TelegramBot(bot_token, chat_id)
 def base_test_stream_callback(default_msg_text, msg_type):
     if not bot.bot_token or not bot.chat_id:
         return False
-    if msg_type == "start" and not attach_photo:
+    if msg_type == "start" and not is_group_attach_photo:
         return bot.send_msg(msg_text=start_message if start_message else default_msg_text)
-    elif msg_type == "start" and attach_photo:
+    elif msg_type == "start" and is_group_attach_photo:
         return bot.send_photo(image_path=attach_photo, caption=start_message if start_message else default_msg_text)
     else:
         if delete_start_message:
@@ -159,15 +163,17 @@ def test_start_stream_callback(props, prop):
 def test_end_stream_callback(props, prop):
     """Тест отправки сообщения об окончании стрима"""
     return base_test_stream_callback(default_msg_text="Тест: Трансляция завершена", msg_type="end")
+
+
 # endregion
 
 
 def on_event(event):
     """Обработчик событий OBS"""
     if event == obs.OBS_FRONTEND_EVENT_STREAMING_STARTED:
-        if enable_start and start_message and not attach_photo:
+        if enable_start and start_message and not is_group_attach_photo:
             bot.send_msg(msg_text=start_message)
-        elif enable_start and start_message and attach_photo:
+        elif enable_start and start_message and is_group_attach_photo:
             bot.send_photo(image_path=attach_photo, caption=start_message)
 
     elif event == obs.OBS_FRONTEND_EVENT_STREAMING_STOPPED:
@@ -212,19 +218,6 @@ def script_properties():
         "Это сообщение будет отправлено в Telegram-канал/группу/чат при начале трансляции.\nПоддерживается HTML-форматирование."
     )
 
-    attach_photo_path = obs.obs_properties_add_path(
-        group_start_msg,
-        name="attach_photo",
-        description="Прикрепить фото (путь к файлу)\n(Необязательно)",
-        type=obs.OBS_PATH_FILE,
-        filter='*.jpg *.jpeg *.png *.gif ',
-        default_path=''
-    )
-    obs.obs_property_set_long_description(
-        attach_photo_path,
-        "По желанию вы можете прикрепить путь к фото, которое будет отправлено вместе с сообщением"
-    )
-
     start_check = obs.obs_properties_add_bool(
         group_start_msg,
         name="enable_start",
@@ -245,6 +238,20 @@ def script_properties():
         "Удалить это сообщение после окончания стрима"
     )
 
+    group_attach_photo = obs.obs_properties_create()
+    attach_photo_path = obs.obs_properties_add_path(
+        group_attach_photo,
+        name="attach_photo",
+        description="Прикрепить фото (путь к файлу)",
+        type=obs.OBS_TEXT_DEFAULT,
+        filter=FILTER_PHOTO,
+        default_path=''
+    )
+    obs.obs_property_set_long_description(
+        attach_photo_path,
+        "По желанию вы можете прикрепить путь к фото, которое будет отправлено вместе с сообщением"
+    )
+
     disable_web_page_prev = obs.obs_properties_add_bool(
         group_start_msg,
         name="disable_web_page_preview",
@@ -253,6 +260,14 @@ def script_properties():
     obs.obs_property_set_long_description(
         disable_web_page_prev,
         "Если к сообщению прикреплена ссылка, то со включенной галочкой отправится превью ссылки (картинка)"
+    )
+
+    obs.obs_properties_add_group(
+        group_start_msg,
+        name="group_attach_photo",
+        description="ПРИКРЕПИТЬ ФОТО (необязательно)",
+        type=obs.OBS_GROUP_CHECKABLE,
+        group=group_attach_photo
     )
 
     obs.obs_properties_add_group(
@@ -471,7 +486,7 @@ def script_defaults(settings):
 def script_load(settings):
     """Загрузка скрипта"""
     global bot_token, chat_id, start_message, end_message, enable_start, enable_end, delete_start_message
-    global disable_web_page_preview, attach_photo
+    global disable_web_page_preview, attach_photo, is_group_attach_photo
 
     bot_token = obs.obs_data_get_string(settings, "bot_token")
     chat_id = obs.obs_data_get_string(settings, "chat_id")
@@ -484,7 +499,8 @@ def script_load(settings):
 
     enable_end = obs.obs_data_get_bool(settings, "enable_end")
 
-    attach_photo = obs.obs_data_get_bool(settings, "attach_photo")
+    if is_group_attach_photo:
+        attach_photo = obs.obs_data_get_bool(settings, "attach_photo")
 
     disable_web_page_preview = obs.obs_data_get_bool(settings, "disable_web_page_preview")
 
@@ -498,7 +514,7 @@ def script_load(settings):
 def script_update(settings):
     """Обновление настроек в реальном времени. Например, поставил галочку в чекбокс - изменения тут же применились."""
     global bot_token, chat_id, start_message, end_message, enable_start, delete_start_message, enable_end
-    global disable_web_page_preview, attach_photo
+    global disable_web_page_preview, attach_photo, is_group_attach_photo
 
     bot_token = bot.bot_token = obs.obs_data_get_string(settings, "bot_token")
     chat_id = bot.chat_id = obs.obs_data_get_string(settings, "chat_id")
@@ -506,7 +522,9 @@ def script_update(settings):
     start_message = obs.obs_data_get_string(settings, "start_message")
     end_message = obs.obs_data_get_string(settings, "end_message")
 
-    attach_photo = obs.obs_data_get_string(settings, "attach_photo")
+    is_group_attach_photo = obs.obs_data_get_bool(settings, "group_attach_photo")
+    if is_group_attach_photo:
+        attach_photo = obs.obs_data_get_string(settings, "attach_photo")
 
     enable_start = obs.obs_data_get_bool(settings, "enable_start")
     delete_start_message = obs.obs_data_get_bool(settings, "delete_start_message")
@@ -524,7 +542,8 @@ def script_save(settings):
     obs.obs_data_set_string(settings, "start_message", start_message)
     obs.obs_data_set_string(settings, "end_message", end_message)
 
-    obs.obs_data_set_string(settings, "attach_photo", attach_photo)
+    if is_group_attach_photo:
+        obs.obs_data_set_string(settings, "attach_photo", attach_photo)
 
     obs.obs_data_set_bool(settings, "enable_start", enable_start)
     obs.obs_data_set_bool(settings, "delete_start_message", delete_start_message)
