@@ -145,10 +145,13 @@ bot = TelegramBot(bot_token, chat_id)
 def base_test_stream_callback(default_msg_text, msg_type):
     if not bot.bot_token or not bot.chat_id:
         return False
-    if msg_type == "start" and not is_group_attach_photo:
-        return bot.send_msg(msg_text=start_message if start_message else default_msg_text)
-    elif msg_type == "start" and is_group_attach_photo:
-        return bot.send_photo(image_path=attach_photo, caption=start_message if start_message else default_msg_text)
+    if msg_type == "start":
+        if is_group_attach_photo:
+            return bot.send_photo(
+                image_path=attach_photo,
+                caption=start_message if start_message else default_msg_text
+            ) if enable_start else False
+        return bot.send_msg(msg_text=start_message if start_message else default_msg_text) if enable_start else False
     else:
         if delete_start_message:
             bot.delete_start_msg()
@@ -163,8 +166,6 @@ def test_start_stream_callback(props, prop):
 def test_end_stream_callback(props, prop):
     """Тест отправки сообщения об окончании стрима"""
     return base_test_stream_callback(default_msg_text="Тест: Трансляция завершена", msg_type="end")
-
-
 # endregion
 
 
@@ -218,16 +219,6 @@ def script_properties():
         "Это сообщение будет отправлено в Telegram-канал/группу/чат при начале трансляции.\nПоддерживается HTML-форматирование."
     )
 
-    start_check = obs.obs_properties_add_bool(
-        group_start_msg,
-        name="enable_start",
-        description="Отправить при старте"
-    )
-    obs.obs_property_set_long_description(
-        start_check,
-        "Отправлять это сообщение при начале трансляции"
-    )
-
     delete_check = obs.obs_properties_add_bool(
         group_start_msg,
         name="delete_start_message",
@@ -274,7 +265,7 @@ def script_properties():
         props,
         name="start_msg_settings",
         description="ЗАПУСК СТРИМА",
-        type=obs.OBS_GROUP_NORMAL,
+        type=obs.OBS_GROUP_CHECKABLE,
         group=group_start_msg
     )
     # endregion
@@ -293,21 +284,11 @@ def script_properties():
         "Это сообщение будет отправлено в Telegram-канал/группу/чат при завершении трансляции"
     )
 
-    end_check = obs.obs_properties_add_bool(
-        group_end_msg,
-        name="enable_end",
-        description="Отправить при окончании"
-    )
-    obs.obs_property_set_long_description(
-        end_check,
-        "Отправлять это сообщение при окончании трансляции"
-    )
-
     obs.obs_properties_add_group(
         props,
         name="end_msg_settings",
         description="ЗАВЕРШЕНИЕ СТРИМА",
-        type=obs.OBS_GROUP_NORMAL,
+        type=obs.OBS_GROUP_CHECKABLE,
         group=group_end_msg
     )
     # endregion
@@ -519,17 +500,19 @@ def script_update(settings):
     bot_token = bot.bot_token = obs.obs_data_get_string(settings, "bot_token")
     chat_id = bot.chat_id = obs.obs_data_get_string(settings, "chat_id")
 
-    start_message = obs.obs_data_get_string(settings, "start_message")
-    end_message = obs.obs_data_get_string(settings, "end_message")
+    enable_start = obs.obs_data_get_bool(settings, "start_msg_settings")
+    if enable_start:
+        start_message = obs.obs_data_get_string(settings, "start_message")
+
+    delete_start_message = obs.obs_data_get_bool(settings, "delete_start_message")
 
     is_group_attach_photo = obs.obs_data_get_bool(settings, "group_attach_photo")
     if is_group_attach_photo:
         attach_photo = obs.obs_data_get_string(settings, "attach_photo")
 
-    enable_start = obs.obs_data_get_bool(settings, "enable_start")
-    delete_start_message = obs.obs_data_get_bool(settings, "delete_start_message")
-
-    enable_end = obs.obs_data_get_bool(settings, "enable_end")
+    enable_end = obs.obs_data_get_bool(settings, "end_msg_settings")
+    if enable_end:
+        end_message = obs.obs_data_get_string(settings, "end_message")
 
     disable_web_page_preview = obs.obs_data_get_bool(settings, "disable_web_page_preview")
 
@@ -539,8 +522,11 @@ def script_save(settings):
     obs.obs_data_set_string(settings, "bot_token", bot_token)
     obs.obs_data_set_string(settings, "chat_id", chat_id)
 
-    obs.obs_data_set_string(settings, "start_message", start_message)
-    obs.obs_data_set_string(settings, "end_message", end_message)
+    if enable_start:
+        obs.obs_data_set_string(settings, "start_message", start_message)
+
+    if enable_end:
+        obs.obs_data_set_string(settings, "end_message", end_message)
 
     if is_group_attach_photo:
         obs.obs_data_set_string(settings, "attach_photo", attach_photo)
