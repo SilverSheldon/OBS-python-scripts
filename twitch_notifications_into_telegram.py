@@ -391,7 +391,7 @@ def script_properties():
                 <li><i>Перейдите в нужный канал/чат</i></li>
                 <li><i>Посмотрите в адресную строку</i></li>
                 <li><i>Число после # - это ID вашего канала/чата</i></li>
-                <li><i>Или вы можете использовать ботов по типу <a href="https://t.me/userinfobot">userinfobot</a></i></li>
+                <li><i>Или вы можете использовать ботов по типу <a href="https://t.me/userinfobot">userinfobot</a> или <a href="https://t.me/UserInfoToBot">Userinfo | Get id | IDBot</a></i></li>
                 <li>
                     ПРИМЕРЫ:
                     <ul>
